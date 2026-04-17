@@ -1,12 +1,14 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
+import os
+from urllib.parse import quote
 from sklearn.metrics.pairwise import cosine_similarity
 
 # ---- Page config ----
 st.set_page_config(
-    page_title="Emotion-Aware Music Recommender",
-    page_icon="🎵",
+    page_title="SmartPlay - Emotion-Aware Music",
+    page_icon="",
     layout="centered"
 )
 
@@ -55,39 +57,28 @@ def load_data():
     id_to_embedding = {sid: audio_embeddings[i] for i, sid in enumerate(audio_song_ids)}
     song_df["embedding"] = song_df["SongId"].map(id_to_embedding)
     song_df = song_df.dropna(subset=["embedding"])
-
     song_df = song_df[song_df["artist"].notna() & song_df["title"].notna()]
     song_df = song_df[song_df["artist"] != "NaN"]
 
     return song_df
 
-# ---- Mood mapping logic ----
-ENHANCEMENT_MAP = {
-    "sad": "happy",
-    "angry": "calm",
-    "calm": "happy",
-    "happy": "happy"
-}
+# ---- Mood mapping ----
+ENHANCEMENT_MAP  = {"sad": "happy", "angry": "calm",  "calm": "happy", "happy": "happy"}
+AROUSAL_MAP      = {"sad": "calm",  "angry": "calm",  "calm": "happy", "happy": "calm"}
+GRADUAL_MAP      = {"sad": "calm",  "angry": "sad",   "calm": "happy", "happy": "happy"}
+CONTRAST_MAP     = {"sad": "angry", "angry": "happy", "calm": "angry", "happy": "sad"}
 
-AROUSAL_REGULATION_MAP = {
-    "sad": "calm",
-    "angry": "calm",
-    "calm": "happy",
-    "happy": "calm"
-}
-
-GRADUAL_MAP = {
-    "sad": "calm",
-    "angry": "sad",
-    "calm": "happy",
-    "happy": "happy"
-}
-
-CONTRAST_MAP = {
-    "sad": "angry",
-    "angry": "happy",
-    "calm": "angry",
-    "happy": "sad"
+STRATEGY_DESCRIPTIONS = {
+    "Mood Congruence — match my mood":
+        "Recommends music that reflects how you are already feeling.",
+    "Mood Enhancement — improve my mood":
+        "Recommends music to lift your mood toward something more positive.",
+    "Arousal Regulation — change my energy":
+        "Recommends music to adjust your energy level up or down.",
+    "Gradual Transition — ease into a new mood":
+        "Recommends music that gently shifts your emotional state.",
+    "Contrast — opposite of my mood":
+        "Recommends music from the opposite emotional quadrant."
 }
 
 def get_target_mood(current_mood, intent):
@@ -96,14 +87,14 @@ def get_target_mood(current_mood, intent):
     elif intent == "Mood Enhancement — improve my mood":
         return ENHANCEMENT_MAP[current_mood]
     elif intent == "Arousal Regulation — change my energy":
-        return AROUSAL_REGULATION_MAP[current_mood]
+        return AROUSAL_MAP[current_mood]
     elif intent == "Gradual Transition — ease into a new mood":
         return GRADUAL_MAP[current_mood]
     elif intent == "Contrast — opposite of my mood":
         return CONTRAST_MAP[current_mood]
     return current_mood
 
-# ---- Centroid-based recommendation ----
+# ---- Recommendation ----
 def recommend_by_centroid(target_mood, song_df, n=10):
     centroids = {}
     for emotion in ["sad", "happy", "angry", "calm"]:
@@ -117,53 +108,86 @@ def recommend_by_centroid(target_mood, song_df, n=10):
     target_songs = song_df[song_df["emotion"] == target_mood]
     return target_songs.nlargest(n, "similarity")[["SongId", "artist", "title", "emotion", "similarity"]]
 
+# ---- Audio helpers ----
+def get_local_audio_path(song_id):
+    path = f"data/MEMD_audio/{int(song_id)}.mp3"
+    return path if os.path.exists(path) else None
+
+def get_youtube_url(artist, title):
+    query = quote(f"{artist} {title}")
+    return f"https://www.youtube.com/results?search_query={query}"
+
 # ---- UI ----
-st.title("🎵 Emotion-Aware Music Recommender")
-st.markdown("Tell us how you feel and what you want from your music.")
+st.title("SmartPlay")
+st.markdown("#### Emotion-Aware Music Recommendation")
+st.markdown("Select your current mood and choose how you would like music to influence how you feel.")
+st.markdown("---")
 
 song_df = load_data()
 
-# ---- Mood selector ----
-mood_emoji = {"happy": "😊 Happy", "sad": "😢 Sad", "angry": "😠 Angry", "calm": "😌 Calm"}
-emotion_emoji = {"happy": "😊", "sad": "😢", "angry": "😠", "calm": "😌"}
+mood_labels = {"happy": "Happy", "sad": "Sad", "angry": "Angry", "calm": "Calm"}
 
-mood = st.selectbox(
-    "How are you feeling right now?",
-    options=list(mood_emoji.keys()),
-    format_func=lambda x: mood_emoji[x]
-)
+col1, col2 = st.columns(2)
 
-# ---- Intent selector ----
+with col1:
+    mood = st.selectbox(
+        "How are you feeling right now?",
+        options=list(mood_labels.keys()),
+        format_func=lambda x: mood_labels[x]
+    )
+
+with col2:
+    n = st.slider("Number of recommendations", min_value=5, max_value=20, value=10)
+
+st.markdown("##### What do you want from your music?")
 intent = st.radio(
-    "What do you want from your music?",
-    options=[
-        "Mood Congruence — match my mood",
-        "Mood Enhancement — improve my mood",
-        "Arousal Regulation — change my energy",
-        "Gradual Transition — ease into a new mood",
-        "Contrast — opposite of my mood"
-    ]
+    "",
+    options=list(STRATEGY_DESCRIPTIONS.keys()),
+    label_visibility="collapsed"
 )
 
-n = st.slider("Number of recommendations", min_value=5, max_value=20, value=10)
+st.caption(STRATEGY_DESCRIPTIONS[intent])
+st.markdown("---")
 
-# ---- Generate ----
-if st.button("🎶 Generate Playlist"):
+if st.button("Generate Playlist", use_container_width=True):
     target_mood = get_target_mood(mood, intent)
 
     if target_mood != mood:
-        st.info(f"You're feeling {mood_emoji[mood]} — recommending {mood_emoji[target_mood]} music based on your intent.")
+        st.info(f"You are feeling {mood_labels[mood]}. Recommending {mood_labels[target_mood]} music based on your selected strategy.")
+    else:
+        st.success(f"Recommending {mood_labels[target_mood]} music to match your current mood.")
 
     results = recommend_by_centroid(target_mood, song_df, n)
 
-    st.markdown(f"### Your {mood_emoji[target_mood]} Playlist")
-    st.markdown(f"*{len(results)} songs recommended*")
+    st.markdown(f"### Your {mood_labels[target_mood]} Playlist")
+    st.markdown(f"*{len(results)} songs ranked by audio similarity to the {target_mood} mood centroid*")
+    st.markdown("---")
 
-    for i, row in results.iterrows():
+    has_local_audio = get_local_audio_path(results.iloc[0]["SongId"]) is not None
+
+    for idx, (i, row) in enumerate(results.iterrows()):
         artist = row["artist"]
         title = row["title"]
         emotion = row["emotion"]
-        st.markdown(f"**{artist}** — {title} {emotion_emoji[emotion]}")
+        similarity = row["similarity"]
+        song_id = row["SongId"]
 
-    st.markdown("---")
-    st.markdown("*Powered by Audio CNN + DEAM Dataset*")
+        col_text, col_link = st.columns([3, 1])
+
+        with col_text:
+            st.markdown(f"**{idx+1}. {artist}** — {title}")
+            st.caption(f"Mood: {emotion.capitalize()}  |  Similarity: {similarity:.3f}")
+
+        with col_link:
+            yt_url = get_youtube_url(artist, title)
+            st.markdown(f"[Listen on YouTube]({yt_url})")
+
+        if has_local_audio:
+            audio_path = get_local_audio_path(song_id)
+            if audio_path:
+                st.audio(audio_path, format="audio/mp3")
+
+        st.markdown("---")
+
+    st.markdown("*Powered by audio CNN embeddings trained on the DEAM dataset*")
+    st.markdown("*Mood regulation strategies based on Russell's Circumplex Model of Affect (1980)*")
