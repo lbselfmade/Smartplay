@@ -117,10 +117,6 @@ def get_youtube_url(artist, title):
     query = quote(f"{artist} {title}")
     return f"https://www.youtube.com/results?search_query={query}"
 
-def get_youtube_embed(artist, title):
-    query = quote(f"{artist} {title}")
-    return f"https://www.youtube.com/embed?listType=search&list={query}"
-
 # ---- UI ----
 st.title("SmartPlay")
 st.markdown("#### Emotion-Aware Music Recommendation")
@@ -184,8 +180,14 @@ if st.button("Generate Playlist", use_container_width=True):
             if audio_path:
                 st.audio(audio_path, format="audio/mp3")
         else:
-            embed_url = get_youtube_embed(artist, title)
-            st.components.v1.iframe(embed_url, height=120, scrolling=False)
+            yt_url = get_youtube_url(artist, title)
+            st.markdown(
+                f'<a href="{yt_url}" target="_blank" style="'
+                f'display:inline-block;padding:6px 16px;background:#FF0000;'
+                f'color:white;border-radius:4px;text-decoration:none;font-size:14px;">'
+                f'Search on YouTube</a>',
+                unsafe_allow_html=True
+            )
 
         st.markdown("---")
 
