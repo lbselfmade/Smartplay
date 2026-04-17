@@ -117,6 +117,10 @@ def get_youtube_url(artist, title):
     query = quote(f"{artist} {title}")
     return f"https://www.youtube.com/results?search_query={query}"
 
+def get_youtube_embed(artist, title):
+    query = quote(f"{artist} {title}")
+    return f"https://www.youtube.com/embed?listType=search&list={query}"
+
 # ---- UI ----
 st.title("SmartPlay")
 st.markdown("#### Emotion-Aware Music Recommendation")
@@ -172,22 +176,17 @@ if st.button("Generate Playlist", use_container_width=True):
         similarity = row["similarity"]
         song_id = row["SongId"]
 
-        col_text, col_link = st.columns([3, 1])
-
-        with col_text:
-            st.markdown(f"**{idx+1}. {artist}** — {title}")
-            st.caption(f"Mood: {emotion.capitalize()}  |  Similarity: {similarity:.3f}")
-
-        with col_link:
-            yt_url = get_youtube_url(artist, title)
-            st.markdown(f"[Listen on YouTube]({yt_url})")
+        st.markdown(f"**{idx+1}. {artist}** — {title}")
+        st.caption(f"Mood: {emotion.capitalize()}  |  Similarity score: {similarity:.3f}")
 
         if has_local_audio:
             audio_path = get_local_audio_path(song_id)
             if audio_path:
                 st.audio(audio_path, format="audio/mp3")
+        else:
+            embed_url = get_youtube_embed(artist, title)
+            st.components.v1.iframe(embed_url, height=120, scrolling=False)
 
         st.markdown("---")
 
     st.markdown("*Powered by audio CNN embeddings trained on the DEAM dataset*")
-    st.markdown("*Mood regulation strategies based on Russell's Circumplex Model of Affect (1980)*")
